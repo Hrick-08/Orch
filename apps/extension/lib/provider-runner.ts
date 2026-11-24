@@ -16,87 +16,75 @@ export interface ProviderMessage {
  * Attaches standard background message handlers to a provider adapter
  */
 export function registerProviderAdapter(adapter: ProviderAdapter): void {
-  browser.runtime.onMessage.addListener(
-    (message: unknown, _sender: unknown, sendResponse: (response: unknown) => void) => {
-      const msg = message as ProviderMessage | undefined;
-      if (!msg || typeof msg !== "object") {
-        return false;
-      }
+  browser.runtime.onMessage.addListener(async (message: any) => {
+    if (!message || typeof message !== "object") return;
 
-      // If message specifies targetProvider, ensure it matches this adapter
-      if (msg.targetProvider && msg.targetProvider !== adapter.id) {
-        return false;
-      }
-
-      switch (msg.type) {
-        case "PROVIDER_HEALTH_CHECK": {
-          adapter
-            .healthCheck()
-            .then((result) => sendResponse({ success: true, result }))
-            .catch((err) =>
-              sendResponse({
-                success: false,
-                error: err instanceof Error ? err.message : String(err),
-                result: {
-                  connected: true,
-                  healthy: false,
-                  loggedIn: false,
-                  capabilities: { text: true, streaming: false, fileUpload: false },
-                },
-              })
-            );
-          return true; // Keep channel open for async response
-        }
-
-        case "SEND_PROMPT": {
-          if (!msg.text) {
-            sendResponse({ success: false, error: "Prompt text is empty" });
-            return false;
-          }
-
-          adapter
-            .sendPrompt(msg.text)
-            .then((result) => sendResponse(result))
-            .catch((err) =>
-              sendResponse({
-                success: false,
-                error: err instanceof Error ? err.message : String(err),
-              })
-            );
-          return true;
-        }
-
-        case "READ_LAST_MESSAGE": {
-          adapter
-            .readLastMessage()
-            .then((text) => sendResponse({ success: true, responseText: text }))
-            .catch((err) =>
-              sendResponse({
-                success: false,
-                error: err instanceof Error ? err.message : String(err),
-              })
-            );
-          return true;
-        }
-
-        case "NAVIGATE_NEW_CHAT": {
-          adapter
-            .navigateToNewChat()
-            .then(() => sendResponse({ success: true }))
-            .catch((err) =>
-              sendResponse({
-                success: false,
-                error: err instanceof Error ? err.message : String(err),
-              })
-            );
-          return true;
-        }
-
-        default:
-          return false;
-      }
+    // If message specifies targetProvider, ensure it matches this adapter
+    if (message.targetProvider && message.targetProvider !== adapter.id) {
+      return;
     }
-  );
+
+    switch (message.type) {
+      case "PROVIDER_HEALTH_CHECK": {
+        try {
+          const result = await adapter.healthCheck();
+          return { success: true, result };
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+            result: {
+              connected: true,
+              healthy: false,
+              loggedIn: false,
+              capabilities: { text: true, streaming: false, fileUpload: false },
+            },
+          };
+        }
+      }
+
+      case "SEND_PROMPT": {
+        if (!message.text) {
+          return { success: false, error: "Prompt text is empty" };
+        }
+        try {
+          return await adapter.sendPrompt(message.text);
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+
+      case "READ_LAST_MESSAGE": {
+        try {
+          const text = await adapter.readLastMessage();
+          return { success: true, responseText: text };
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+
+      case "NAVIGATE_NEW_CHAT": {
+        try {
+          await adapter.navigateToNewChat();
+          return { success: true };
+        } catch (err) {
+          return {
+            success: false,
+            error: err instanceof Error ? err.message : String(err),
+          };
+        }
+      }
+
+      default:
+        return;
+    }
+  });
 
   console.log(`[Orchestrator Adapter] ${adapter.name} adapter registered.`);
 }

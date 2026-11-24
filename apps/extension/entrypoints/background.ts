@@ -116,144 +116,132 @@ async function checkProviderHealth(provider: ProviderId): Promise<{
 export default defineBackground(() => {
   console.log("[Orchestrator Background] Service worker initialized.");
 
-  browser.runtime.onMessage.addListener(
-    (message: unknown, _sender: unknown, sendResponse: (res: unknown) => void) => {
-      const msg = message as BackgroundMessage | undefined;
-      if (!msg || typeof msg !== "object" || !msg.type) return;
+  browser.runtime.onMessage.addListener(async (message: any) => {
+    const msg = message as BackgroundMessage | undefined;
+    if (!msg || typeof msg !== "object" || !msg.type) return;
 
-      // --- 1. Health Check Request ---
-      if (msg.type === "HEALTH_CHECK") {
-        (async () => {
-          const [chatgpt, claude, gemini] = await Promise.all([
-            checkProviderHealth("chatgpt"),
-            checkProviderHealth("claude"),
-            checkProviderHealth("gemini"),
-          ]);
+    // --- 1. Health Check Request ---
+    if (msg.type === "HEALTH_CHECK") {
+      try {
+        const [chatgpt, claude, gemini] = await Promise.all([
+          checkProviderHealth("chatgpt"),
+          checkProviderHealth("claude"),
+          checkProviderHealth("gemini"),
+        ]);
 
-          return {
-            type: "HEALTH_CHECK_RESPONSE",
-            nonce: msg.nonce ?? "",
-            providers: {
-              chatgpt: { connected: chatgpt.connected, healthy: chatgpt.healthy },
-              claude: { connected: claude.connected, healthy: claude.healthy },
-              gemini: { connected: gemini.connected, healthy: gemini.healthy },
-            },
-          };
-        })()
-          .then(sendResponse)
-          .catch((err) => {
-            sendResponse({
-              type: "HEALTH_CHECK_RESPONSE",
-              nonce: msg.nonce ?? "",
-              providers: {
-                chatgpt: { connected: false, healthy: false },
-                claude: { connected: false, healthy: false },
-                gemini: { connected: false, healthy: false },
-              },
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-
-        return true;
+        return {
+          type: "HEALTH_CHECK_RESPONSE",
+          nonce: msg.nonce ?? "",
+          providers: {
+            chatgpt: { connected: chatgpt.connected, healthy: chatgpt.healthy },
+            claude: { connected: claude.connected, healthy: claude.healthy },
+            gemini: { connected: gemini.connected, healthy: gemini.healthy },
+          },
+        };
+      } catch (err) {
+        return {
+          type: "HEALTH_CHECK_RESPONSE",
+          nonce: msg.nonce ?? "",
+          providers: {
+            chatgpt: { connected: false, healthy: false },
+            claude: { connected: false, healthy: false },
+            gemini: { connected: false, healthy: false },
+          },
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
+    }
 
-      // --- 2. Handoff Request ---
-      if (msg.type === "HANDOFF_REQUEST") {
-        const provider = msg.provider as ProviderId;
-        const providerName = PROVIDER_NAMES[provider] ?? provider;
+    // --- 2. Handoff Request ---
+    if (msg.type === "HANDOFF_REQUEST") {
+      const provider = msg.provider as ProviderId;
+      const providerName = PROVIDER_NAMES[provider] ?? provider;
 
-        (async () => {
-          const tabs = await findProviderTabs(provider);
-          if (tabs.length === 0) {
-            return {
-              type: "HANDOFF_RESPONSE",
-              nonce: msg.nonce ?? "",
-              success: false,
-              provider,
-              error: `No open ${providerName} tab found. Please open ${providerName} in a tab, ensure you are logged in, and try again.`,
-            };
-          }
-
-          const tab = tabs[0];
-          if (!tab.id) {
-            return {
-              type: "HANDOFF_RESPONSE",
-              nonce: msg.nonce ?? "",
-              success: false,
-              provider,
-              error: `Could not access ${providerName} tab.`,
-            };
-          }
-
-          const res = (await browser.tabs.sendMessage(tab.id, {
-            type: "SEND_PROMPT",
-            targetProvider: provider,
-            text: msg.contextPayload,
-          })) as ProviderResponse | undefined;
-
-          if (res?.success && res.responseText) {
-            return {
-              type: "HANDOFF_RESPONSE",
-              nonce: msg.nonce ?? "",
-              success: true,
-              provider,
-              responseText: res.responseText,
-            };
-          }
-
+      try {
+        const tabs = await findProviderTabs(provider);
+        if (tabs.length === 0) {
           return {
             type: "HANDOFF_RESPONSE",
             nonce: msg.nonce ?? "",
             success: false,
             provider,
-            error: res?.error || `Failed to receive response from ${providerName}.`,
+            error: `No open ${providerName} tab found. Please open ${providerName} in a tab, ensure you are logged in, and try again.`,
           };
-        })()
-          .then(sendResponse)
-          .catch((err) => {
-            sendResponse({
-              type: "HANDOFF_RESPONSE",
-              nonce: msg.nonce ?? "",
-              success: false,
-              provider,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-
-        return true;
-      }
-
-      // --- 3. Popup / Internal: Get Detailed Provider Status ---
-      if (msg.type === "GET_ALL_PROVIDER_STATUS") {
-        (async () => {
-          const [chatgpt, claude, gemini] = await Promise.all([
-            checkProviderHealth("chatgpt"),
-            checkProviderHealth("claude"),
-            checkProviderHealth("gemini"),
-          ]);
-
-          return {
-            chatgpt: { ...chatgpt, name: PROVIDER_NAMES.chatgpt, url: PROVIDER_URLS.chatgpt },
-            claude: { ...claude, name: PROVIDER_NAMES.claude, url: PROVIDER_URLS.claude },
-            gemini: { ...gemini, name: PROVIDER_NAMES.gemini, url: PROVIDER_URLS.gemini },
-          };
-        })()
-          .then(sendResponse)
-          .catch((err) => sendResponse({ error: err.message }));
-
-        return true;
-      }
-
-      // --- 4. Popup / Internal: Open Provider or App Tab ---
-      if (msg.type === "OPEN_TAB") {
-        const url = msg.url;
-        if (url) {
-          browser.tabs.create({ url }).then((tab) => sendResponse({ success: true, tabId: tab.id }));
-          return true;
         }
-      }
 
-      return false;
+        const tab = tabs[0];
+        if (!tab.id) {
+          return {
+            type: "HANDOFF_RESPONSE",
+            nonce: msg.nonce ?? "",
+            success: false,
+            provider,
+            error: `Could not access ${providerName} tab.`,
+          };
+        }
+
+        const res = (await browser.tabs.sendMessage(tab.id, {
+          type: "SEND_PROMPT",
+          targetProvider: provider,
+          text: msg.contextPayload,
+        })) as ProviderResponse | undefined;
+
+        if (res?.success && res.responseText) {
+          return {
+            type: "HANDOFF_RESPONSE",
+            nonce: msg.nonce ?? "",
+            success: true,
+            provider,
+            responseText: res.responseText,
+          };
+        }
+
+        return {
+          type: "HANDOFF_RESPONSE",
+          nonce: msg.nonce ?? "",
+          success: false,
+          provider,
+          error: res?.error || `Failed to receive response from ${providerName}.`,
+        };
+      } catch (err) {
+        return {
+          type: "HANDOFF_RESPONSE",
+          nonce: msg.nonce ?? "",
+          success: false,
+          provider,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
     }
-  );
+
+    // --- 3. Popup / Internal: Get Detailed Provider Status ---
+    if (msg.type === "GET_ALL_PROVIDER_STATUS") {
+      try {
+        const [chatgpt, claude, gemini] = await Promise.all([
+          checkProviderHealth("chatgpt"),
+          checkProviderHealth("claude"),
+          checkProviderHealth("gemini"),
+        ]);
+
+        return {
+          chatgpt: { ...chatgpt, name: PROVIDER_NAMES.chatgpt, url: PROVIDER_URLS.chatgpt },
+          claude: { ...claude, name: PROVIDER_NAMES.claude, url: PROVIDER_URLS.claude },
+          gemini: { ...gemini, name: PROVIDER_NAMES.gemini, url: PROVIDER_URLS.gemini },
+        };
+      } catch (err) {
+        return { error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+
+    // --- 4. Popup / Internal: Open Provider or App Tab ---
+    if (msg.type === "OPEN_TAB") {
+      const url = msg.url;
+      if (url) {
+        const tab = await browser.tabs.create({ url });
+        return { success: true, tabId: tab.id };
+      }
+    }
+
+    return;
+  });
 });
