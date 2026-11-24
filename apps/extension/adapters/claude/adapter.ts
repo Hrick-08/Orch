@@ -8,7 +8,7 @@ import type {
   SendPromptResult,
 } from "../types";
 import { CLAUDE_SELECTORS as S } from "./selectors";
-import { waitForElement, waitUntilGone, sleep } from "../../lib/dom";
+import { waitForElement, waitUntilGone, sleep, extractErrorMessage } from "../../lib/dom";
 
 export class ClaudeAdapter implements ProviderAdapter {
   readonly id = "claude" as const;
@@ -17,12 +17,30 @@ export class ClaudeAdapter implements ProviderAdapter {
   async healthCheck(): Promise<AdapterHealthResult> {
     const composer =
       document.querySelector(S.composer) ??
-      document.querySelector(S.composerFallback);
-    const loggedIn = !!document.querySelector(S.userMenu);
+      document.querySelector(S.composerFallback) ??
+      document.querySelector('div[contenteditable="true"]') ??
+      document.querySelector('fieldset div[contenteditable="true"]');
+
+    const hasLoginIndicator = !!(
+      document.querySelector('a[href*="/login"]') ||
+      document.querySelector('input[type="email"]') ||
+      window.location.pathname.startsWith("/login")
+    );
+
+    const hasUserMenu = !!(
+      document.querySelector(S.userMenu) ||
+      document.querySelector('button[aria-label*="User"]') ||
+      document.querySelector('button[aria-label*="Account"]') ||
+      document.querySelector('a[href="/new"]') ||
+      document.querySelector("nav")
+    );
+
+    const composerReady = !!composer;
+    const loggedIn = (!hasLoginIndicator && composerReady) || hasUserMenu;
 
     return {
       connected: true,
-      healthy: !!composer,
+      healthy: composerReady && loggedIn,
       loggedIn,
       capabilities: { text: true, streaming: true, fileUpload: false },
     };
@@ -43,31 +61,67 @@ export class ClaudeAdapter implements ProviderAdapter {
   async sendPrompt(text: string): Promise<SendPromptResult> {
     try {
       // 1. Wait for composer
-      const composer = await waitForElement<HTMLElement>(
-        S.composer,
-        5000,
-        S.composerFallback
-      );
+      const composer =
+        (await waitForElement<HTMLElement>(S.composer, 5000, S.composerFallback)) ??
+        document.querySelector<HTMLElement>('div[contenteditable="true"]');
+
       if (!composer) {
-        return { success: false, error: "Composer not found" };
+        return { success: false, error: "Claude composer not found. Ensure Claude tab is open." };
       }
 
       // 2. Set text in contenteditable
       composer.focus();
-      composer.innerHTML = `<p>${text}</p>`;
-      composer.dispatchEvent(new Event("input", { bubbles: true }));
+      const targetP = composer.querySelector("p") || composer;
+      try {
+        const sel = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(targetP);
+        range.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+      } catch {}
+
+      const inserted = document.execCommand("insertText", false, text);
+      if (!inserted || !composer.textContent?.includes(text.slice(0, 10))) {
+        composer.innerHTML = `<p>${text}</p>`;
+        composer.dispatchEvent(
+          new InputEvent("input", {
+            bubbles: true,
+            inputType: "insertText",
+            data: text,
+          })
+        );
+      }
       await sleep(300);
 
       // 3. Click send
-      const sendBtn =
-        document.querySelector<HTMLButtonElement>(S.sendButton) ??
-        document.querySelector<HTMLButtonElement>(S.sendButtonFallback);
+      let sendBtn: HTMLButtonElement | null = null;
+      for (let i = 0; i < 15; i++) {
+        sendBtn =
+          document.querySelector<HTMLButtonElement>(S.sendButton) ??
+          document.querySelector<HTMLButtonElement>(S.sendButtonFallback) ??
+          document.querySelector<HTMLButtonElement>('button[aria-label*="Send"]');
 
-      if (!sendBtn) {
-        return { success: false, error: "Send button not found" };
+        if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
+          break;
+        }
+        await sleep(150);
       }
 
-      sendBtn.click();
+      if (sendBtn && !sendBtn.disabled && sendBtn.getAttribute("aria-disabled") !== "true") {
+        sendBtn.click();
+      } else {
+        composer.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true,
+            cancelable: true,
+          })
+        );
+      }
 
       // 4. Wait for streaming to complete
       await sleep(2000);
@@ -77,14 +131,14 @@ export class ClaudeAdapter implements ProviderAdapter {
       // 5. Read response
       const responseText = await this.readLastMessage();
       if (!responseText) {
-        return { success: false, error: "Could not read response" };
+        return { success: false, error: "Could not read response from Claude" };
       }
 
       return { success: true, responseText };
     } catch (err) {
       return {
         success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
+        error: extractErrorMessage(err),
       };
     }
   }

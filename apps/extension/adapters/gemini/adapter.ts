@@ -8,7 +8,7 @@ import type {
   SendPromptResult,
 } from "../types";
 import { GEMINI_SELECTORS as S } from "./selectors";
-import { waitForElement, waitUntilGone, sleep } from "../../lib/dom";
+import { waitForElement, waitUntilGone, sleep, extractErrorMessage } from "../../lib/dom";
 
 export class GeminiAdapter implements ProviderAdapter {
   readonly id = "gemini" as const;
@@ -17,12 +17,29 @@ export class GeminiAdapter implements ProviderAdapter {
   async healthCheck(): Promise<AdapterHealthResult> {
     const composer =
       document.querySelector(S.composer) ??
-      document.querySelector(S.composerFallback);
-    const loggedIn = !!document.querySelector(S.userMenu);
+      document.querySelector(S.composerFallback) ??
+      document.querySelector("rich-textarea") ??
+      document.querySelector('div[contenteditable="true"]');
+
+    const hasLoginIndicator = !!(
+      document.querySelector('a[href*="accounts.google.com"]') ||
+      document.querySelector('a[aria-label*="Sign in"]')
+    );
+
+    const hasAccount = !!(
+      document.querySelector(S.userMenu) ||
+      document.querySelector('a[aria-label*="Account"]') ||
+      document.querySelector('img[aria-label*="Account"]') ||
+      document.querySelector('button[aria-label*="Account"]') ||
+      document.querySelector('a[href*="myaccount.google.com"]')
+    );
+
+    const composerReady = !!composer;
+    const loggedIn = (!hasLoginIndicator && composerReady) || hasAccount;
 
     return {
       connected: true,
-      healthy: !!composer,
+      healthy: composerReady && loggedIn,
       loggedIn,
       capabilities: { text: true, streaming: true, fileUpload: false },
     };
@@ -55,10 +72,30 @@ export class GeminiAdapter implements ProviderAdapter {
       composer.focus();
       if (composer.tagName === "TEXTAREA") {
         (composer as HTMLTextAreaElement).value = text;
+        composer.dispatchEvent(new Event("input", { bubbles: true }));
+        composer.dispatchEvent(new Event("change", { bubbles: true }));
       } else {
-        composer.innerHTML = `<p>${text}</p>`;
+        const targetP = composer.querySelector("p") || composer;
+        try {
+          const sel = window.getSelection();
+          const range = document.createRange();
+          range.selectNodeContents(targetP);
+          range.collapse(false);
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        } catch {}
+        const inserted = document.execCommand("insertText", false, text);
+        if (!inserted || !composer.textContent?.includes(text.slice(0, 10))) {
+          composer.innerHTML = `<p>${text}</p>`;
+          composer.dispatchEvent(
+            new InputEvent("input", {
+              bubbles: true,
+              inputType: "insertText",
+              data: text,
+            })
+          );
+        }
       }
-      composer.dispatchEvent(new Event("input", { bubbles: true }));
       await sleep(300);
 
       // 3. Click send
@@ -80,14 +117,14 @@ export class GeminiAdapter implements ProviderAdapter {
       // 5. Read response
       const responseText = await this.readLastMessage();
       if (!responseText) {
-        return { success: false, error: "Could not read response" };
+        return { success: false, error: "Could not read response from Gemini" };
       }
 
       return { success: true, responseText };
     } catch (err) {
       return {
         success: false,
-        error: err instanceof Error ? err.message : "Unknown error",
+        error: extractErrorMessage(err),
       };
     }
   }

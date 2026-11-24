@@ -4,6 +4,7 @@
 
 import { browser } from "wxt/browser";
 import type { ProviderAdapter } from "../adapters/types";
+import { extractErrorMessage } from "./dom";
 
 export interface ProviderMessage {
   type: string;
@@ -32,7 +33,7 @@ export function registerProviderAdapter(adapter: ProviderAdapter): void {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: extractErrorMessage(err),
             result: {
               connected: true,
               healthy: false,
@@ -52,7 +53,7 @@ export function registerProviderAdapter(adapter: ProviderAdapter): void {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: extractErrorMessage(err),
           };
         }
       }
@@ -64,7 +65,7 @@ export function registerProviderAdapter(adapter: ProviderAdapter): void {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: extractErrorMessage(err),
           };
         }
       }
@@ -76,7 +77,7 @@ export function registerProviderAdapter(adapter: ProviderAdapter): void {
         } catch (err) {
           return {
             success: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: extractErrorMessage(err),
           };
         }
       }

@@ -118,3 +118,21 @@ export function waitForCondition(
     }, pollIntervalMs);
   });
 }
+
+/**
+ * Safely extract error message across different window/realm boundaries
+ */
+export function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object") {
+    if ("message" in err && typeof (err as any).message === "string" && (err as any).message.trim()) {
+      return (err as any).message;
+    }
+    try {
+      const str = JSON.stringify(err);
+      if (str && str !== "{}") return str;
+    } catch {}
+  }
+  if (typeof err === "string" && err.trim()) return err;
+  return "Could not complete action with provider. Please ensure the provider tab is active and logged in.";
+}

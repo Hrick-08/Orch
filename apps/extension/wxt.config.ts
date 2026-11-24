@@ -15,7 +15,7 @@ export default defineConfig({
     description:
       "Companion extension for Orchestrator. Bridges your AI provider sessions for seamless cross-model conversations.",
     version: "0.1.0",
-    permissions: ["activeTab", "tabs"],
+    permissions: ["activeTab", "tabs", "scripting"],
     host_permissions: [
       "https://chatgpt.com/*",
       "https://chat.openai.com/*",
@@ -25,6 +25,8 @@ export default defineConfig({
     externally_connectable: {
       matches: [
         "http://localhost:3000/*",
+        "http://localhost:3001/*",
+        "http://127.0.0.1:3000/*",
         "http://localhost:5173/*",
         "https://orchestrator.app/*",
       ],

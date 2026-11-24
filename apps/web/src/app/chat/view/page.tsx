@@ -86,19 +86,22 @@ function ConversationView() {
         success: boolean;
         responseText?: string;
         error?: string;
-      }>({
-        type: "HANDOFF_REQUEST",
-        provider: selectedProvider,
-        contextPayload,
-        conversationId: id,
-      });
+      }>(
+        {
+          type: "HANDOFF_REQUEST",
+          provider: selectedProvider,
+          contextPayload,
+          conversationId: id,
+        },
+        180_000
+      );
 
       if (response.success && response.responseText) {
         setHandoffStatus("completed");
         await addMessage(id, "assistant", response.responseText, selectedProvider);
       } else {
         setHandoffStatus("failed");
-        setHandoffError(response.error ?? "Unknown error");
+        setHandoffError(response.error || "Handoff failed without response from provider");
       }
     } catch (err) {
       setHandoffStatus("failed");

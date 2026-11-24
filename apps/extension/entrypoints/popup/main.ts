@@ -57,15 +57,26 @@ async function loadStatus() {
           stateEl.textContent = "Ready";
           stateEl.className = "provider-state online";
           readyCount++;
-          if (btn) btn.textContent = "Switch";
+          if (btn) {
+            btn.textContent = "Switch";
+            btn.setAttribute("data-url", info.url || btn.getAttribute("data-url") || "");
+          }
         } else if (info.connected) {
           stateEl.textContent = info.loggedIn ? "Composer not ready" : "Needs sign-in";
           stateEl.className = "provider-state";
-          if (btn) btn.textContent = "Open";
+          if (btn) {
+            btn.textContent = info.loggedIn ? "Open" : "Sign in";
+            if (!info.loggedIn) {
+              if (p === "chatgpt") btn.setAttribute("data-url", "https://chatgpt.com/auth/login");
+              if (p === "claude") btn.setAttribute("data-url", "https://claude.ai/login");
+            }
+          }
         } else {
           stateEl.textContent = "No tab open";
           stateEl.className = "provider-state offline";
-          if (btn) btn.textContent = "Open";
+          if (btn) {
+            btn.textContent = "Open";
+          }
         }
       }
     }
@@ -99,19 +110,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // Open / Switch buttons
   const openButtons = document.querySelectorAll<HTMLButtonElement>(".btn-action");
   openButtons.forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const url = btn.getAttribute("data-url");
       if (url) {
-        browser.runtime.sendMessage({ type: "OPEN_TAB", url });
+        await browser.runtime.sendMessage({ type: "OPEN_TAB", url });
+        window.close();
       }
     });
   });
 
   // Open web app
-  document.getElementById("btn-open-app")?.addEventListener("click", () => {
-    browser.runtime.sendMessage({
+  document.getElementById("btn-open-app")?.addEventListener("click", async () => {
+    await browser.runtime.sendMessage({
       type: "OPEN_TAB",
       url: "http://localhost:3000",
     });
+    window.close();
   });
 });

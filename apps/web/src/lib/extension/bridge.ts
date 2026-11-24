@@ -10,11 +10,21 @@ function nonce(): string {
 }
 
 export type ExtensionStatus = "connected" | "disconnected" | "unknown";
+export type ProviderId = "chatgpt" | "claude" | "gemini";
+
+export interface ProviderHealth {
+  connected: boolean;
+  healthy: boolean;
+  loggedIn?: boolean;
+}
+
+export type ProviderHealthMap = Record<ProviderId, ProviderHealth>;
 
 type MessageHandler = (event: MessageEvent) => void;
 
 let _handler: MessageHandler | null = null;
 let _status: ExtensionStatus = "unknown";
+let _providerHealth: ProviderHealthMap | null = null;
 const _pendingCallbacks = new Map<
   string,
   { resolve: (data: unknown) => void; reject: (err: Error) => void }
@@ -41,6 +51,11 @@ export function initBridge(): void {
     if (data.type === "EXTENSION_HELLO") {
       _status = "connected";
     }
+
+    if (data.type === "EXTENSION_CONTEXT_INVALIDATED") {
+      _status = "disconnected";
+      _providerHealth = null;
+    }
   };
 
   window.addEventListener("message", _handler);
@@ -53,19 +68,23 @@ export function destroyBridge(): void {
     _handler = null;
   }
   _status = "unknown";
+  _providerHealth = null;
   _pendingCallbacks.clear();
 }
 
 /** Send a message to the extension and wait for a correlated response */
 export function sendToExtension<T = unknown>(
   message: Record<string, unknown>,
-  timeoutMs = 10_000
+  timeoutMs?: number
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     if (typeof window === "undefined") {
       reject(new Error("Bridge not available server-side"));
       return;
     }
+
+    const defaultTimeout = message.type === "HANDOFF_REQUEST" ? 180_000 : 10_000;
+    const timeout = timeoutMs ?? defaultTimeout;
 
     const id = nonce();
     const msg = { ...message, nonce: id };
@@ -74,7 +93,7 @@ export function sendToExtension<T = unknown>(
       _pendingCallbacks.delete(id);
       _status = "disconnected";
       reject(new Error("Extension response timed out"));
-    }, timeoutMs);
+    }, timeout);
 
     _pendingCallbacks.set(id, {
       resolve: (data) => {
@@ -92,15 +111,46 @@ export function sendToExtension<T = unknown>(
   });
 }
 
-/** Check if the extension is responding */
-export async function checkExtension(): Promise<boolean> {
+/** Check if the extension is responding and fetch provider statuses */
+export async function checkExtension(): Promise<ProviderHealthMap | null> {
   try {
-    await sendToExtension({ type: "HEALTH_CHECK" }, 3_000);
-    return true;
+    const res = await sendToExtension<{
+      type: string;
+      providers?: ProviderHealthMap;
+    }>({ type: "HEALTH_CHECK" }, 3_000);
+    _status = "connected";
+    if (res?.providers) {
+      _providerHealth = res.providers;
+      return res.providers;
+    }
+    return _providerHealth;
   } catch {
     _status = "disconnected";
-    return false;
+    return null;
   }
+}
+
+/** Get the cached provider health map */
+export function getProviderHealth(): ProviderHealthMap | null {
+  return _providerHealth;
+}
+
+/** Open or switch to a provider's tab in browser */
+export async function openProviderTab(url: string): Promise<boolean> {
+  try {
+    if (_status === "connected") {
+      const res = await sendToExtension<{ success?: boolean }>({ type: "OPEN_TAB", url }, 3_000);
+      if (res?.success) return true;
+    }
+  } catch {
+    // Fall back to window.open
+  }
+
+  if (typeof window !== "undefined") {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return true;
+  }
+  return false;
 }
 
 /** Get the current status */

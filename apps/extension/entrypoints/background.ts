@@ -108,7 +108,32 @@ async function checkProviderHealth(provider: ProviderId): Promise<{
 
     return { connected: true, healthy: false, loggedIn: false };
   } catch {
-    // Tab is open, but content script may still be loading or tab is sleeping
+    // If sendMessage failed, try dynamically injecting the content script
+    // (handles tabs that were opened before the extension was loaded or reloaded)
+    try {
+      if (tab.id && (browser as any).scripting) {
+        await (browser as any).scripting.executeScript({
+          target: { tabId: tab.id },
+          files: [`content-scripts/${provider}.js`],
+        });
+        await new Promise((r) => setTimeout(r, 400));
+        const retry = (await browser.tabs.sendMessage(tab.id, {
+          type: "PROVIDER_HEALTH_CHECK",
+          targetProvider: provider,
+        })) as ProviderResponse | undefined;
+
+        if (retry?.success && retry.result) {
+          return {
+            connected: true,
+            healthy: Boolean(retry.result.healthy),
+            loggedIn: Boolean(retry.result.loggedIn),
+          };
+        }
+      }
+    } catch {
+      // Script injection unavailable or failed
+    }
+
     return { connected: true, healthy: false, loggedIn: false };
   }
 }
@@ -133,9 +158,21 @@ export default defineBackground(() => {
           type: "HEALTH_CHECK_RESPONSE",
           nonce: msg.nonce ?? "",
           providers: {
-            chatgpt: { connected: chatgpt.connected, healthy: chatgpt.healthy },
-            claude: { connected: claude.connected, healthy: claude.healthy },
-            gemini: { connected: gemini.connected, healthy: gemini.healthy },
+            chatgpt: {
+              connected: chatgpt.connected,
+              healthy: chatgpt.healthy,
+              loggedIn: chatgpt.loggedIn,
+            },
+            claude: {
+              connected: claude.connected,
+              healthy: claude.healthy,
+              loggedIn: claude.loggedIn,
+            },
+            gemini: {
+              connected: gemini.connected,
+              healthy: gemini.healthy,
+              loggedIn: gemini.loggedIn,
+            },
           },
         };
       } catch (err) {
@@ -143,9 +180,9 @@ export default defineBackground(() => {
           type: "HEALTH_CHECK_RESPONSE",
           nonce: msg.nonce ?? "",
           providers: {
-            chatgpt: { connected: false, healthy: false },
-            claude: { connected: false, healthy: false },
-            gemini: { connected: false, healthy: false },
+            chatgpt: { connected: false, healthy: false, loggedIn: false },
+            claude: { connected: false, healthy: false, loggedIn: false },
+            gemini: { connected: false, healthy: false, loggedIn: false },
           },
           error: err instanceof Error ? err.message : String(err),
         };
@@ -180,11 +217,42 @@ export default defineBackground(() => {
           };
         }
 
-        const res = (await browser.tabs.sendMessage(tab.id, {
-          type: "SEND_PROMPT",
-          targetProvider: provider,
-          text: msg.contextPayload,
-        })) as ProviderResponse | undefined;
+        let res: ProviderResponse | undefined;
+        try {
+          res = (await browser.tabs.sendMessage(tab.id, {
+            type: "SEND_PROMPT",
+            targetProvider: provider,
+            text: msg.contextPayload,
+          })) as ProviderResponse | undefined;
+        } catch (sendErr) {
+          // If sending message failed, try dynamic injection and retry
+          try {
+            if (tab.id && (browser as any).scripting) {
+              await (browser as any).scripting.executeScript({
+                target: { tabId: tab.id },
+                files: [`content-scripts/${provider}.js`],
+              });
+              await new Promise((r) => setTimeout(r, 500));
+              res = (await browser.tabs.sendMessage(tab.id, {
+                type: "SEND_PROMPT",
+                targetProvider: provider,
+                text: msg.contextPayload,
+              })) as ProviderResponse | undefined;
+            }
+          } catch {
+            const errStr =
+              sendErr instanceof Error
+                ? sendErr.message
+                : String(sendErr || "Could not communicate with tab");
+            return {
+              type: "HANDOFF_RESPONSE",
+              nonce: msg.nonce ?? "",
+              success: false,
+              provider,
+              error: `Connection to ${providerName} tab failed: ${errStr}. Please reload the ${providerName} tab.`,
+            };
+          }
+        }
 
         if (res?.success && res.responseText) {
           return {
@@ -201,15 +269,23 @@ export default defineBackground(() => {
           nonce: msg.nonce ?? "",
           success: false,
           provider,
-          error: res?.error || `Failed to receive response from ${providerName}.`,
+          error:
+            res?.error ||
+            `Failed to receive response from ${providerName}. Please check that the ${providerName} tab is logged in and ready.`,
         };
       } catch (err) {
+        const errMsg =
+          err instanceof Error
+            ? err.message
+            : typeof err === "object" && err && "message" in err
+            ? String((err as any).message)
+            : "An unexpected error occurred while communicating with the provider.";
         return {
           type: "HANDOFF_RESPONSE",
           nonce: msg.nonce ?? "",
           success: false,
           provider,
-          error: err instanceof Error ? err.message : String(err),
+          error: errMsg,
         };
       }
     }
@@ -237,9 +313,48 @@ export default defineBackground(() => {
     if (msg.type === "OPEN_TAB") {
       const url = msg.url;
       if (url) {
+        const provider = (Object.keys(PROVIDER_URLS) as ProviderId[]).find((p) =>
+          url.includes(p)
+        );
+
+        if (provider) {
+          const existingTabs = await findProviderTabs(provider);
+          if (existingTabs.length > 0 && existingTabs[0].id) {
+            const shouldNavigate = url.includes("login") || url.includes("auth");
+            if (shouldNavigate) {
+              await browser.tabs.update(existingTabs[0].id, { url, active: true });
+            } else {
+              await browser.tabs.update(existingTabs[0].id, { active: true });
+            }
+            if (existingTabs[0].windowId) {
+              await browser.windows.update(existingTabs[0].windowId, { focused: true });
+            }
+            return {
+              type: "OPEN_TAB_RESPONSE",
+              nonce: msg.nonce ?? "",
+              success: true,
+              tabId: existingTabs[0].id,
+            };
+          }
+        }
+
         const tab = await browser.tabs.create({ url });
-        return { success: true, tabId: tab.id };
+        if (tab.windowId) {
+          await browser.windows.update(tab.windowId, { focused: true });
+        }
+        return {
+          type: "OPEN_TAB_RESPONSE",
+          nonce: msg.nonce ?? "",
+          success: true,
+          tabId: tab.id,
+        };
       }
+      return {
+        type: "OPEN_TAB_RESPONSE",
+        nonce: msg.nonce ?? "",
+        success: false,
+        error: "Missing URL",
+      };
     }
 
     return;

@@ -20,9 +20,16 @@ export const HealthCheckRequestSchema = z.object({
   nonce: z.string(),
 });
 
+export const OpenTabRequestSchema = z.object({
+  type: z.literal("OPEN_TAB"),
+  nonce: z.string(),
+  url: z.string(),
+});
+
 export const AppToExtensionSchema = z.discriminatedUnion("type", [
   HandoffRequestSchema,
   HealthCheckRequestSchema,
+  OpenTabRequestSchema,
 ]);
 
 export type AppToExtensionMessage = z.infer<typeof AppToExtensionSchema>;
@@ -43,13 +50,26 @@ export const HealthCheckResponseSchema = z.object({
   nonce: z.string(),
   providers: z.record(
     ProviderIdSchema,
-    z.object({ connected: z.boolean(), healthy: z.boolean() })
+    z.object({
+      connected: z.boolean(),
+      healthy: z.boolean(),
+      loggedIn: z.boolean().optional(),
+    })
   ),
+});
+
+export const OpenTabResponseSchema = z.object({
+  type: z.literal("OPEN_TAB_RESPONSE"),
+  nonce: z.string(),
+  success: z.boolean(),
+  tabId: z.number().optional(),
+  error: z.string().optional(),
 });
 
 export const ExtensionToAppSchema = z.discriminatedUnion("type", [
   HandoffResponseSchema,
   HealthCheckResponseSchema,
+  OpenTabResponseSchema,
 ]);
 
 export type ExtensionToAppMessage = z.infer<typeof ExtensionToAppSchema>;
