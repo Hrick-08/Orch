@@ -1,0 +1,17 @@
+{
+  "name": "orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:web": "npm --prefix apps/web run dev",
+    "build:web": "npm --prefix apps/web run build",
+    "dev:ext": "npm --prefix apps/extension run dev",
+    "build:ext": "npm --prefix apps/extension run build",
+    "zip:ext": "npm --prefix apps/extension run zip",
+    "build": "npm run build:web && npm run build:ext"
+  }
+}

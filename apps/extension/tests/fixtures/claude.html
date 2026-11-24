@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Claude Mock Page</title>
+  </head>
+  <body>
+    <nav>
+      <a href="/new">Start new chat</a>
+      <button data-testid="user-menu">Profile</button>
+    </nav>
+    <main>
+      <div id="messages">
+        <div class="font-claude-message" data-is-streaming="false">
+          Greetings! How may I help you today?
+        </div>
+      </div>
+      <fieldset>
+        <div contenteditable="true" class="ProseMirror"></div>
+        <button aria-label="Send Message" type="button">Send</button>
+      </fieldset>
+    </main>
+  </body>
+</html>

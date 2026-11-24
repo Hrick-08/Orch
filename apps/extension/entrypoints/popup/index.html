@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Orchestrator Companion</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="popup-container">
+      <header class="popup-header">
+        <div class="header-brand">
+          <div class="brand-icon">⚡</div>
+          <div class="brand-info">
+            <h1 class="brand-title">Orchestrator</h1>
+            <span class="brand-subtitle">AI Handoff Companion</span>
+          </div>
+        </div>
+        <button id="btn-refresh" class="btn-icon" title="Refresh status">
+          🔄
+        </button>
+      </header>
+
+      <section class="section-status">
+        <div class="section-title-row">
+          <span class="section-title">Connected Providers</span>
+          <span id="overall-status" class="status-pill status-loading">Checking...</span>
+        </div>
+
+        <div class="provider-list" id="provider-list">
+          <!-- ChatGPT Card -->
+          <div class="provider-card" id="card-chatgpt">
+            <div class="provider-info">
+              <div class="provider-dot dot-chatgpt"></div>
+              <div>
+                <div class="provider-name">ChatGPT</div>
+                <div class="provider-state" id="state-chatgpt">Checking...</div>
+              </div>
+            </div>
+            <button class="btn-action" id="btn-open-chatgpt" data-url="https://chatgpt.com/">Open</button>
+          </div>
+
+          <!-- Claude Card -->
+          <div class="provider-card" id="card-claude">
+            <div class="provider-info">
+              <div class="provider-dot dot-claude"></div>
+              <div>
+                <div class="provider-name">Claude</div>
+                <div class="provider-state" id="state-claude">Checking...</div>
+              </div>
+            </div>
+            <button class="btn-action" id="btn-open-claude" data-url="https://claude.ai/new">Open</button>
+          </div>
+
+          <!-- Gemini Card -->
+          <div class="provider-card" id="card-gemini">
+            <div class="provider-info">
+              <div class="provider-dot dot-gemini"></div>
+              <div>
+                <div class="provider-name">Gemini</div>
+                <div class="provider-state" id="state-gemini">Checking...</div>
+              </div>
+            </div>
+            <button class="btn-action" id="btn-open-gemini" data-url="https://gemini.google.com/app">Open</button>
+          </div>
+        </div>
+      </section>
+
+      <footer class="popup-footer">
+        <button id="btn-open-app" class="btn-primary">
+          Open Orchestrator Web App
+        </button>
+        <div class="footer-note">
+          Local-first · Zero server history · Direct browser session
+        </div>
+      </footer>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

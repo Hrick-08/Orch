@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Gemini Mock Page</title>
+  </head>
+  <body>
+    <header>
+      <button aria-label="New chat">New chat</button>
+      <img aria-label="Google Account" src="" alt="Account" />
+    </header>
+    <main>
+      <div id="chat-history">
+        <model-response>
+          <div class="markdown">Hello! I am Gemini. What would you like to explore?</div>
+        </model-response>
+      </div>
+      <rich-textarea>
+        <div class="ql-editor" contenteditable="true"></div>
+      </rich-textarea>
+      <button class="send-button" aria-label="Send message" type="button">Send</button>
+    </main>
+  </body>
+</html>
