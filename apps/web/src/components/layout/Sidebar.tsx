@@ -83,30 +83,36 @@ export function Sidebar() {
           </p>
         )}
         {filtered.map((conv) => (
-          <button
+          <div
             key={conv.id}
-            onClick={() => handleSelect(conv.id)}
-            className={`group mb-0.5 flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+            className={`group mb-0.5 flex w-full items-center rounded-lg text-sm transition-colors ${
               activeId === conv.id
                 ? "bg-zinc-200 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
                 : "text-zinc-600 hover:bg-zinc-100 dark:text-zinc-400 dark:hover:bg-zinc-800/60"
             }`}
           >
-            <MessageSquare className="h-4 w-4 shrink-0 opacity-50" />
-            <div className="flex-1 truncate">
-              <p className="truncate text-sm font-medium">{conv.title}</p>
-              <p className="text-[10px] opacity-50">
-                {formatTime(conv.updatedAt)}
-              </p>
-            </div>
             <button
+              type="button"
+              onClick={() => handleSelect(conv.id)}
+              className="flex min-w-0 flex-1 items-center gap-2 py-2 pl-3 pr-2 text-left"
+            >
+              <MessageSquare className="h-4 w-4 shrink-0 opacity-50" />
+              <div className="flex-1 truncate">
+                <p className="truncate text-sm font-medium">{conv.title}</p>
+                <p className="text-[10px] opacity-50">
+                  {formatTime(conv.updatedAt)}
+                </p>
+              </div>
+            </button>
+            <button
+              type="button"
               onClick={(e) => handleDelete(e, conv.id)}
-              className="hidden rounded p-1 text-zinc-400 hover:text-red-500 group-hover:block"
+              className="mr-1.5 hidden rounded p-1 text-zinc-400 hover:text-red-500 group-hover:block focus:block"
               aria-label="Delete conversation"
             >
               <Trash2 className="h-3.5 w-3.5" />
             </button>
-          </button>
+          </div>
         ))}
       </nav>
     </aside>
